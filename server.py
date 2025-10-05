@@ -193,7 +193,7 @@ async def verify_api_key(authorization: Optional[str] = Header(None)):
 
 
 def init_bigquery():
-    """Initialize BigQuery client"""
+    """Initialize BigQuery client with flexible auth"""
     global bq_client
     
     if bq_client is None:
@@ -201,23 +201,35 @@ def init_bigquery():
         
         gcp_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
         if gcp_json:
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
-                f.write(gcp_json)
-                credentials = service_account.Credentials.from_service_account_file(f.name)
-                bq_client = bigquery.Client(
-                    credentials=credentials,
-                    project=GCP_PROJECT_ID
-                )
-                os.unlink(f.name)
+            try:
+                # Parse JSON
+                cred_data = json.loads(gcp_json)
+                
+                # Check credential type
+                if cred_data.get("type") == "service_account":
+                    # Service Account credentials
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+                        f.write(gcp_json)
+                        credentials = service_account.Credentials.from_service_account_file(f.name)
+                        os.unlink(f.name)
+                    logger.info("✓ Using Service Account credentials")
+                    bq_client = bigquery.Client(credentials=credentials, project=GCP_PROJECT_ID)
+                elif cred_data.get("type") == "authorized_user":
+                    # OAuth User credentials - use default
+                    logger.info("✓ Using OAuth user credentials")
+                    bq_client = bigquery.Client(project=GCP_PROJECT_ID)
+                else:
+                    logger.warning(f"Unknown credential type, using default")
+                    bq_client = bigquery.Client(project=GCP_PROJECT_ID)
+                    
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON: {e}")
+                bq_client = bigquery.Client(project=GCP_PROJECT_ID)
         else:
             bq_client = bigquery.Client(project=GCP_PROJECT_ID)
         
         logger.info("✓ BigQuery client initialized")
-
-
-async def get_user_model_config(user_id: str) -> Optional[Dict]:
-    """Get user's model configuration from DB"""
     async with db_pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT provider, model_name, api_key_encrypted FROM model_configs WHERE user_id = $1",
