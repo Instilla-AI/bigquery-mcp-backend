@@ -230,6 +230,13 @@ def init_bigquery():
             bq_client = bigquery.Client(project=GCP_PROJECT_ID)
         
         logger.info("✓ BigQuery client initialized")
+
+
+async def get_user_model_config(user_id: str) -> Optional[Dict[str, str]]:
+    """Get user's model configuration - FIXED: Now async"""
+    if not db_pool:
+        return None
+        
     async with db_pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT provider, model_name, api_key_encrypted FROM model_configs WHERE user_id = $1",
