@@ -215,18 +215,50 @@ def init_bigquery():
                         os.unlink(f.name)
                     logger.info("✓ Using Service Account credentials")
                     bq_client = bigquery.Client(credentials=credentials, project=GCP_PROJECT_ID)
+                    
                 elif cred_data.get("type") == "authorized_user":
-                    # OAuth User credentials - use default
+                    # OAuth User credentials - write to temp file for google.auth
+                    import tempfile
+                    import google.auth
+                    
                     logger.info("✓ Using OAuth user credentials")
-                    bq_client = bigquery.Client(project=GCP_PROJECT_ID)
+                    
+                    # Write credentials to temp file
+                    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+                        f.write(gcp_json)
+                        temp_cred_file = f.name
+                    
+                    try:
+                        # Set environment variable for google.auth
+                        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_cred_file
+                        
+                        # Load credentials
+                        credentials, project = google.auth.load_credentials_from_file(temp_cred_file)
+                        
+                        # Create client
+                        bq_client = bigquery.Client(
+                            credentials=credentials, 
+                            project=GCP_PROJECT_ID or project
+                        )
+                        
+                        logger.info(f"✓ BigQuery client initialized with project: {GCP_PROJECT_ID or project}")
+                    finally:
+                        # Cleanup temp file
+                        if os.path.exists(temp_cred_file):
+                            os.unlink(temp_cred_file)
                 else:
-                    logger.warning(f"Unknown credential type, using default")
+                    logger.warning(f"Unknown credential type: {cred_data.get('type')}")
                     bq_client = bigquery.Client(project=GCP_PROJECT_ID)
                     
             except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON: {e}")
-                bq_client = bigquery.Client(project=GCP_PROJECT_ID)
+                logger.error(f"Invalid JSON in GCP_SERVICE_ACCOUNT_JSON: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Error initializing BigQuery client: {e}")
+                raise
         else:
+            # No credentials provided, try default
+            logger.info("No GCP_SERVICE_ACCOUNT_JSON found, using default credentials")
             bq_client = bigquery.Client(project=GCP_PROJECT_ID)
         
         logger.info("✓ BigQuery client initialized")
