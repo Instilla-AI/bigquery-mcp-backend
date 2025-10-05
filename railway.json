@@ -1,0 +1,25 @@
+# Nella tua directory locale bigquery-mcp-backend
+cd bigquery-mcp-backend
+
+# Crea railway.json
+cat > railway.json << 'EOF'
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "python -u server.py",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10,
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 100
+  }
+}
+EOF
+
+# Commit e push
+git add railway.json
+git commit -m "Add railway.json configuration"
+git push
